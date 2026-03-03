@@ -1,0 +1,629 @@
+---
+title: "project 3 solution"
+author: "Xuan Zhang"
+date: "2025-10-06"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Part 1A
+
+```{r}
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+# Get the Data
+# Read in with tidytuesdayR package 
+# Install from CRAN via: install.packages("tidytuesdayR")
+# This loads the readme and all the datasets for the week of interest
+
+# Either ISO-8601 date or year/week works!
+
+tuesdata <- tidytuesdayR::tt_load('2020-09-29')
+tuesdata <- tidytuesdayR::tt_load(2020, week = 40)
+
+beyonce_lyrics <- tuesdata$beyonce_lyrics
+
+# Or read in the data manually
+
+beyonce_lyrics <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2020/2020-09-29/beyonce_lyrics.csv')
+taylor_swift_lyrics <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2020/2020-09-29/taylor_swift_lyrics.csv')
+sales <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2020/2020-09-29/sales.csv')
+charts <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2020/2020-09-29/charts.csv')
+
+b_lyrics <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-09-29/beyonce_lyrics.csv")
+ts_lyrics <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-09-29/taylor_swift_lyrics.csv")
+sales <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-09-29/sales.csv")
+
+
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(stringr)
+library(lubridate)
+library(forcats)
+library(tidyverse)
+
+# creat a new data frame wrangled_data,clean the data variable by removing the text in parentheses and brackets, convert the released variable to date format.
+wrangled_data <- sales %>%
+  mutate(
+    released_clean = str_remove(released, "\\(.*?\\)(\\[.*?\\])?"),
+    released = mdy(released_clean)
+  ) %>%
+
+# Edit the same dataset, create a new variable sales_millions by dividing sales by 1 million, filter the data to include only rows where country is UK, US, or World.
+  mutate(
+    sales_millions = sales / 1000000 
+  ) %>%
+  filter(
+    country %in% c("UK", "US", "World")
+  ) %>%
+   # Create 'country' Factor (using forcats)
+   mutate(
+    country = forcats::as_factor(country),
+    country = forcats::fct_collapse(
+      country, 
+      "US" = c("US", "USA", "United States"), 
+      "UK" = c("UK", "United Kingdom"),
+      "World" = c("World", "Global"," Worldwide")
+    )
+   ) %>%
+   #  Select and Auto-Print Final Tibble 
+  select(
+    -released_clean, 
+    -sales, 
+    released,
+    country, 
+    sales_millions,
+    everything()
+    )
+# Auto-printing the final wrangled tibble
+head(wrangled_data)
+##I don't know why I dropped the released_clean anda sales variable, however, they are still in my dataframe??
+
+```
+
+Part 1B
+
+```{r sales-summary, results='hide'}
+# Load the necessary packages
+library(tidyverse) # This includes dplyr and lubridate
+# A more explicit alternative would be to load them individually:
+# library(dplyr)
+# library(lubridate)
+
+# Assuming 'wrangled_data' is already in your environment,
+# run the rest of your code.
+today <- as.Date("2025-10-05") 
+
+# Calculate Years Since Release for US Albums
+beyonce_taylor_us_data  <- wrangled_data %>%
+  filter(country == "US") %>%
+  mutate(
+    # Calculate the time interval from release date to today
+    time_interval = interval(released, today),
+    # Convert the interval to years (decimal)
+    years_decimal = as.numeric(time_interval, "years"),
+    # Round down (truncate) the decimal to get the whole number (e.g., 14.99 -> 14)
+    years_since_release = floor(years_decimal)
+  )
+
+# Remove intermediate calculation columns (uncomment if desired)
+# beyonce_taylor_us_data <- beyonce_taylor_us_data %>%
+#   select(-time_interval, -years_decimal)
+
+# Display the first few rows with the new column
+print("Data with Years Since Release:")
+print(head(as.data.frame(beyonce_taylor_us_data)))
+
+summary_by_artist <- beyonce_taylor_us_data %>%
+  # Group the data by artist
+  group_by(artist) %>%
+  # Calculate the required summary statistics
+  summarise(
+    # Most Recent: Minimum years elapsed (album released closest to today)
+    Most_Recent_Years = min(years_since_release, na.rm = TRUE),
+    # Oldest: Maximum years elapsed (album released furthest from today)
+    Oldest_Years = max(years_since_release, na.rm = TRUE),
+    # Median Years: The middle value of the distribution of years elapsed
+    Median_Years = median(years_since_release, na.rm = TRUE),
+    .groups = 'drop' # Ungroup the data afterward
+  )
+
+# Auto-print the final summary tibble
+print("Summary of Years Since Release :")
+#summary_by_artist
+print(as.data.frame(summary_by_artist)) # <-- Applied fix
+```
+
+Part 1C
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# --- Assuming 'wrangled_data' exists from previous steps ---
+
+# 1. Calculate Total Album Sales (in millions)
+# We assume 'wrangled_data' contains sales_millions, country, and artist,
+# and is already filtered for UK, US, and World.
+
+total_sales_summary <- wrangled_data %>%
+  
+  # Group by both artist and country
+  group_by(artist, country) %>%
+  
+  # Calculate the sum of sales in millions
+  summarise(
+    total_sales_millions = sum(sales_millions, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+print("Total Sales Summary (Millions):")
+print(total_sales_summary)
+
+# 2. Create the Percent Stacked Barchart
+# The 'position = "fill"' argument scales the bars to 100% (or 1.0)
+sales_chart <- total_sales_summary %>%
+  ggplot(aes(x = artist, y = total_sales_millions, fill = country)) +
+  
+  # Use geom_col (for pre-summarized data) and set position to "fill"
+  geom_col(position = "fill") +
+  
+  # Add labels to display percentages
+  geom_text(
+    aes(label = paste0(round(total_sales_millions / tapply(total_sales_millions, artist, sum)[artist], 3) * 100, "%")),
+    # Calculate y position for labels within the stacked bars
+    position = position_fill(vjust = 0.5),
+    color = "black",
+    size = 3
+  ) +
+  
+  # Customize scales and labels for clarity
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Percentage of Studio Album Sales by Country",
+    subtitle = "Comparing Beyoncé and Taylor Swift (UK, US, and World Sales)",
+    x = "Artist",
+    y = "Percentage of Total Sales (Millions)",
+    fill = "Sales Region"
+  ) +
+  # Apply a clean theme
+  theme_minimal() +
+  # Adjust legend position and text size
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold")
+  )
+
+# Auto-print the final chart
+print(sales_chart)
+```
+
+Part 1D
+
+```{r}
+library(dplyr)
+library(ggplot2)
+# ... (data loading and wrangling steps to create 'wrangled_data') ...
+
+world_sales_data <- wrangled_data %>%
+  # 1. Filter and Aggregate
+  filter(country == "World") %>%
+  group_by(artist, title) %>%
+  summarise(total_sales_millions = sum(sales_millions), .groups = 'drop')
+
+sales_plot <- world_sales_data %>%
+  ggplot(aes(
+    # FORCATS REQUIREMENT: Reorder the album factor by sales value
+    y = forcats::fct_reorder(title, total_sales_millions),
+    x = total_sales_millions,
+    fill = artist
+  )) +
+  
+  geom_col() +
+  labs(
+    title = "Global Studio Album Sales (World Only)",
+    x = "Sales (Millions of Dollars)",
+    y = "Album Title",
+    fill = "Artist"
+  ) +
+  theme_minimal()
+sales_plot 
+```
+
+Part1E
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(scales) # Needed for comma formatting on axes
+
+# Assuming 'wrangled_data' exists and contains the necessary columns
+# Filter the data to ensure we only plot the three required countries
+plot_data <- wrangled_data %>%
+  filter(country %in% c("UK", "US", "World"))
+
+# Create the faceted scatter plot
+sales_release_plot <- plot_data %>%
+  ggplot(aes(
+    x = released, 
+    y = sales_millions, 
+    color = artist
+  )) +
+  
+  # 1. Create the scatter plot points
+  geom_point(size = 3, alpha = 0.7) +
+  
+  # 2. Add an optional smoothing line to visualize trends
+   geom_smooth(method = "loess", span = 0.9, se = FALSE, linetype = "dashed", linewidth = 0.5) +
+  
+  # 3. Facet the plot by row for each country
+  # The formula 'country ~ .' facets by country rows (y-axis) and keeps the columns uniform
+  facet_grid(country ~ ., scales = "free_y") +
+  
+  # 4. Customizations
+  labs(
+    title = "Studio Album Sales vs. Release Date",
+    subtitle = "Faceted by Sales Region (UK, US, and World)",
+    x = "Album Release Date",
+    y = "Sales (Millions of Dollars)",
+    color = "Artist"
+  ) +
+  # Use scale_y_continuous for clean formatting
+  scale_y_continuous(labels = label_comma()) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    # Adjust axis text size for readability in facets
+    strip.text.y = element_text(face = "bold")
+  )
+
+# Auto-print the final plot
+sales_release_plot
+```
+
+Part 2A
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(stringr)
+
+# 1. Create the 'line' column by separating rows based on the newline character (\n)
+ts_lyrics_long <- ts_lyrics %>%
+  # Separate rows based on the newline character in the 'Lyrics' column, 
+  # creating a new column named 'line'
+  separate_rows(Lyrics, sep = "\n", convert = FALSE) %>%
+  
+  # Rename the new column to 'line' and clean whitespace
+  rename(line = Lyrics) %>%
+  mutate(line = str_trim(line)) %>%
+  
+  # Remove blank lines that may result from extra \n characters in the source data
+  filter(line != "")
+# Create a lowercase version of the 'line' column for case-insensitive analysis
+ts_lyrics_long_lower <- ts_lyrics_long %>%
+  mutate(line_lower = str_to_lower(line))
+
+# 2. Analyze for "hello" (case-insensitive, whole word)
+hello_lines <- ts_lyrics_long_lower %>%
+  filter(str_detect(line, 
+                    # Use regex() to apply case-insensitivity
+                    regex("\\bhello\\b", ignore_case = TRUE)))
+
+total_hello_lines <- nrow(hello_lines)
+
+# 3. Analyze for "goodbye" (case-insensitive, whole word)
+goodbye_lines <- ts_lyrics_long_lower %>%
+  filter(str_detect(line_lower, "\\bgoodbye\\b")) # No ignore.case needed
+
+total_goodbye_lines <- nrow(goodbye_lines)
+
+
+# Display final results
+print("Rows containing 'hello':")
+print(hello_lines %>% select(Album, Title, line))
+print(paste("Total lines containing 'hello':", total_hello_lines))
+
+print("\nRows containing 'goodbye':")
+print(goodbye_lines %>% select(Album, Title, line))
+print(paste("Total lines containing 'goodbye':", total_goodbye_lines))
+```
+
+Part 2B
+
+```{r}
+glimpse(b_lyrics)
+
+library(dplyr)
+library(stringr)
+
+# Filter for "hello" (case-insensitive, whole word)
+hello_lines <- b_lyrics %>%
+  filter(str_detect(str_to_lower(line), "\\bhello\\b"))
+
+total_hello_lines <- nrow(hello_lines)
+
+# Filter for "goodbye" (case-insensitive, whole word)
+goodbye_lines <- b_lyrics %>%
+  filter(str_detect(str_to_lower(line), "\\bgoodbye\\b"))
+
+total_goodbye_lines <- nrow(goodbye_lines)
+# Display final results
+print("Rows containing 'hello':")
+print(hello_lines %>% select(song_name, line))
+print(paste("Total lines containing 'hello':", total_hello_lines))
+print("\nRows containing 'goodbye':")
+print(goodbye_lines %>% select(song_name,line))
+print(paste("Total lines containing 'goodbye':", total_goodbye_lines))
+
+```
+
+Part 2C
+
+```{r}
+library(dplyr)
+install.packages("tidytext")
+library(tidytext)
+library(stringr)
+library(ggplot2)
+install.packages("wordcloud")
+library(wordcloud) # For the word cloud
+library(RColorBrewer) # For word cloud colors
+
+# 1. Tokenize, Remove Stopwords, and Count Words
+b_words_sentiment <- b_lyrics %>%
+  # Tokenize the 'line' column into individual words
+  unnest_tokens(input = line, output = word) %>%
+  
+  # Remove standard English stopwords
+  anti_join(stop_words, by = "word") %>%
+  
+  # Calculate the total number (n) for each word (frequency)
+  count(word, sort = TRUE) %>%
+  
+  # 2. Add 'bing' sentiment lexicon
+  inner_join(get_sentiments("bing"), by = "word") %>%
+  
+  # 3. Sort rows (already sorted by count, n)
+  
+  # 4. Keep the top 25 most frequent words
+  head(25)
+
+# Auto print the wrangled tibble data frame
+print(b_words_sentiment)
+
+b_plot <- b_words_sentiment %>%
+  # Ensure the words are ordered by frequency (most frequent at the top)
+  mutate(word = forcats::fct_reorder(word, n)) %>%
+  
+  ggplot(aes(x = n, y = word, fill = sentiment)) +
+  geom_col() +
+  
+  # Add labels for clarity
+  labs(
+    title = "Top 25 Most Frequent Words in Beyoncé's Lyrics by Bing Sentiment",
+    x = "Word Frequency (n)",
+    y = "Word",
+    fill = "Sentiment"
+  ) +
+  scale_fill_manual(values = c("negative" = "firebrick", "positive" = "steelblue")) +
+  theme_minimal()
+  
+print(b_plot)
+
+# Define a color palette (colors based on sentiment)
+word_cloud_colors <- b_words_sentiment %>%
+  mutate(color = case_when(
+    sentiment == "positive" ~ "steelblue",
+    sentiment == "negative" ~ "firebrick",
+    TRUE ~ "grey50"
+  )) %>%
+  pull(color)
+
+# Create the word cloud
+wordcloud(
+  words = b_words_sentiment$word,
+  freq = b_words_sentiment$n,
+  max.words = 25, # Limit to the top 25 words
+  random.order = FALSE, # Ensure layout is consistent
+  colors = word_cloud_colors # Color the words based on their sentiment
+)
+
+```
+
+Part 2D
+
+```{r}
+library(magrittr)
+
+#just repeat the prior steps to establish a long table of "ts_lyrics_long_lower" data frame
+# A. Prepare ts_lyrics (Split 'Lyrics' column into single 'line' rows)
+# NOTE: Using 'Title' to represent the song title for clarity in the final table.
+#ts_lyrics_long <- ts_lyrics %>%
+ # separate_rows(Lyrics, sep = "\n", convert = FALSE) %>% 
+ # rename(line = Lyrics) %>%
+ # mutate(line = str_trim(line)) %>% 
+#  filter(line != "")
+
+# 1. Tokenize, Remove Stopwords, and Count Words
+ts_words_sentiment <- ts_lyrics_long_lower %>%
+  # Tokenize the 'line' column into individual words
+  unnest_tokens(input = line, output = word) %>%
+  
+  # Remove standard English stopwords
+  anti_join(stop_words, by = "word") %>%
+  
+  # Calculate the total number (n) for each word (frequency)
+  count(word, sort = TRUE) %>%
+  
+  # 2. Add 'bing' sentiment lexicon
+  inner_join(get_sentiments("bing"), by = "word") %>%
+  
+  # 3. Sort rows (already sorted by count, n)
+  
+  # 4. Keep the top 25 most frequent words
+  head(25)
+
+# Auto print the wrangled tibble data frame
+print(ts_words_sentiment)
+
+ts_plot <- ts_words_sentiment %>%
+  mutate(word = forcats::fct_reorder(word, n)) %>%
+  
+  ggplot(aes(x = n, y = word, fill = sentiment)) +
+  geom_col() +
+  
+  labs(
+    title = "Top 25 Most Frequent Words in Taylor Swift's Lyrics by Bing Sentiment",
+    x = "Word Frequency (n)",
+    y = "Word",
+    fill = "Sentiment"
+  ) +
+  scale_fill_manual(values = c("negative" = "firebrick", "positive" = "gold")) +
+  theme_minimal()
+print(ts_plot)
+# Prepare colors based on sentiment
+word_cloud_colors <- ts_words_sentiment %>%
+  mutate(color = case_when(
+    sentiment == "positive" ~ "gold",
+    sentiment == "negative" ~ "firebrick",
+    TRUE ~ "grey50"
+  )) %>%
+  pull(color)
+
+# Create the word cloud
+wordcloud(
+  words = ts_words_sentiment$word,
+  freq = ts_words_sentiment$n,
+  max.words = 25,
+  random.order = FALSE,
+  colors = word_cloud_colors 
+)
+
+```
+
+part 2E
+
+```{r}
+library(dplyr)
+library(tidytext)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(lubridate)
+library(scales) # For label_comma()
+library(ggrepel) # For better text labeling in scatter plot
+
+# NOTE: ASSUME textdata, dplyr, tidytext, etc. are installed and loaded.
+# NOTE: ASSUME 'ts_lyrics' and 'wrangled_data' (containing sales) are loaded.
+
+# --- STEP 0: Data Preparation (Assuming ts_lyrics and wrangled_data are loaded) ---
+
+# 0A. Prepare ts_lyrics (Split 'Lyrics' column into single 'line' rows)
+ts_lyrics_long <- ts_lyrics %>%
+  separate_rows(Lyrics, sep = "\n", convert = FALSE) %>% 
+  rename(line = Lyrics) %>%
+  mutate(line = str_trim(line)) %>% 
+  filter(line != "")
+
+
+# 0B. Prepare wrangled_data (Filter down to US sales and clean album names)
+# NOTE: Using 'Album' with a capital A for case-sensitivity.
+us_sales_clean <- wrangled_data %>%
+ # filter(country == "US") %>%
+  group_by(title) %>% 
+  summarise(
+    total_sales_millions = sum(sales_millions, na.rm = TRUE),
+    released = first(released), 
+    .groups = 'drop'
+  ) %>%
+  filter(!is.na(released)) %>%
+  # Clean up Album names for joining (e.g., replace spaces with underscores)
+  mutate(Album = str_replace_all(title, " ", "_"))
+
+
+## --- STEP 1-6: Tokenization, Sentiment, and Average Score Calculation ---
+
+# 1-4. Tokenize, remove stopwords, and join AFINN sentiment
+ts_sentiment_scores <- ts_lyrics_long %>%
+  unnest_tokens(input = line, output = word) %>%
+  anti_join(stop_words, by = "word") %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  
+  # 3. Calculate total count (n) and score contribution (score * n) for each word in the lyrics for each Album
+  group_by(Album, Title, word) %>% 
+  summarise(
+    n = n(),
+    word_score = first(value),
+    .groups = 'drop_last'
+  ) %>%
+  
+  # 5. Calculate the average sentiment score for each Album
+  group_by(Album) %>% 
+  summarise(
+    total_word_count = sum(n),
+    total_sentiment_score = sum(n * word_score), 
+    average_sentiment_score = total_sentiment_score / total_word_count, 
+    .groups = 'drop'
+  ) %>%
+  
+  # Clean up Album names for joining (must match the sales data)
+  mutate(Album = str_replace_all(Album, " ", "_"))
+
+
+# 6. Auto print the wrangled tibble data frame (using the fix)
+results='asis'
+options(width = 120)  # Adjust pillar width for better console display
+print("Average AFINN Sentiment Score per Album:")
+print(as.data.frame(ts_sentiment_scores))
+
+
+## --- STEP 7-10: Join Data, Create Plot, and Interpret ---
+
+# 7. Join the wrangled data frames
+final_plot_data <- ts_sentiment_scores %>%
+  inner_join(us_sales_clean, by = "Album")
+
+# 8. & 9. Create Scatter Plot with Sales as Size and Horizontal Line
+final_plot <- final_plot_data %>%
+  ggplot(aes(
+    x = released,
+    y = average_sentiment_score,
+    size = total_sales_millions, 
+    label = Album 
+  )) +
+  
+  geom_point(alpha = 0.8, color = "#663399") + # Custom Taylor Swift-esque color
+  
+  # Add album labels next to the points
+  geom_text_repel(aes(label = str_replace_all(Album, "_", " ")), # Un-clean name for plot labels
+                  size = 3, color = "black", box.padding = 0.5) +
+  
+  # 9. Add a horizontal line at y-intercept=0 (Neutral Sentiment)
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50", linewidth = 1) +
+  
+  # Customizations
+  labs(
+    title = "Taylor Swift Album Sentiment Over Time: A Tonal Shift",
+    subtitle = "Average AFINN Sentiment Score vs. Release Date (Point Size reflects US Sales)",
+    x = "Album Release Date",
+    y = "Average AFINN Sentiment Score (0 = Neutral)",
+    size = "Sales (Millions)"
+  ) +
+  scale_y_continuous(limits = c(-0.5, 1.5)) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", color = "#663399"))
+
+print(final_plot)
+
+
+# 10. Interpretation
+print("Interpretation of Album Sentiment Over Time:")
+print("The scatter plot shows that Taylor Swift’s album sentiment, while consistently positive (above the 0-line), has generally trended downward over her career. Early albums like 'Fearless' exhibit high positive scores, whereas later works like 'Reputation' and 'Lover' have lower average scores, suggesting more complex, introspective, or melancholic themes that balance positive and negative emotions.The album sales (point size) show no clear correlation with sentiment, demonstrating that lyrical complexity doesn't preclude commercial success.")
+```
+
+Interpretation of Album Sentiment Over Time:
+
+The scatter plot shows that Taylor Swift’s album sentiment, while consistently positive (above the 0-line), has generally trended downward over her career. Early albums like 'Fearless' exhibit high positive scores, whereas later works like 'Reputation' and 'Lover' have lower average scores, suggesting more complex, introspective, or melancholic themes that balance positive and negative emotions.The album sales (point size) show no clear correlation with sentiment, demonstrating that lyrical complexity doesn't preclude commercial success.
